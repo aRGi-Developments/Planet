@@ -53,6 +53,7 @@ extern satellite_t satellites[PLANET_MAX_SATELLITES];   // satellites data
 extern esp_err_t addPeer(uint8_t *peerMAC);              
 extern esp_err_t esp_now_setup(void);
 extern int sendPacket(uint8_t *, size_t, uint8_t *);
+extern int gtwSendPacket(uint8_t *, size_t, uint8_t *);
 
 /**
  * startup, allocates send and receive buffers, configures espnow
@@ -176,6 +177,40 @@ int sendMessage(satellite_t *satellite, planet_t *host, enum PacketTypes_e msgTy
     return retCode;
 }
 
+
+int gtwSendMessage(satellite_t *satellite, planet_t *host, enum PacketTypes_e msgType) {
+
+    satellite_packet_head_t packet_head;
+    satellite_packet_payload_t packet_payload;
+
+    size_t buffSize;
+    static uint8_t * buff2send;
+    uint16_t crc;
+    esp_err_t retCode = 0xff;
+
+    memcpy(packet_head.src_addr, host->mac_addr, MAC_ADDRESS_LEN);
+    memcpy(packet_head.dest_addr, satellite->sat_addr, MAC_ADDRESS_LEN);
+    packet_head.type = msgType;
+
+    packet_payload.state = 0;
+    packet_payload.command = 0;
+
+    buffSize = sizeof(packet_head) + sizeof(satellite_packet_payload_t) + sizeof(uint16_t);
+
+    buff2send = (uint8_t*) malloc(buffSize);
+    if (!(buff2send == NULL)) {
+        memset(buff2send, 0, buffSize);
+        memcpy(buff2send, &packet_head, sizeof(satellite_packet_head_t));
+        memcpy(&buff2send[sizeof(satellite_packet_head_t)], &packet_payload, sizeof(satellite_packet_payload_t));
+        crc = 1; //crc16_le(UINT16_MAX, (uint8_t const *)buff2send, buffSize);
+        memcpy(&buff2send[sizeof(satellite_packet_head_t)+sizeof(satellite_packet_payload_t)], &crc, sizeof(uint16_t));
+        retCode = gtwSendPacket(buff2send, buffSize, satellite->sat_addr);
+        free(buff2send);
+    }
+    else 
+        DEBUG_STR("ERROR ");
+    return retCode;
+}
 /**
  * planet loop, wait for an incoming message, decode it and reply with the appropiate response
  *
@@ -185,16 +220,28 @@ esp_err_t planetLoop() {
   satellite_packet_payload_t packet_payload;
   satellite_packet_payload_data_t packet_data;
   int found;
+  int send2gtw = 0xFF;
 
   if (planet.receive != 0) {
     if (planet.receive > 0) {
       memcpy(&packet_head, planet.receive_buffer, sizeof(satellite_packet_head_t)); 
       memcpy(&packet_payload, &planet.receive_buffer[sizeof(satellite_packet_head_t)], sizeof(satellite_packet_payload_t)); 
       memcpy(&packet_data, &planet.receive_buffer[sizeof(satellite_packet_head_t)+sizeof(satellite_packet_payload_t)], sizeof(satellite_packet_payload_data_t)); 
-      DEBUG_STR("Node ");
+
       found = searchSatellite(satellites, 0, PLANET_MAX_SATELLITES -1, packet_head.src_addr);
       if (found == -1) 
         found = addSatellite(satellites, &planet, &packet_head);
+
+      if (!(found < 0 || found >= PLANET_MAX_SATELLITES)) {
+        if (packet_head.type == PT_ADDRREQ || packet_head.type == PT_ADDRREQ_REQ || packet_head.type == PT_TELEMETRY) {
+          send2gtw = sendMessage(&satellites[found], &planet, ((packet_head.type == PT_ADDRREQ) ? PT_ADDRREQ_OFFER : ((packet_head.type == PT_ADDRREQ_REQ) ? PT_ADDRREQ_ACK : PT_TELEMETRY_ACK)));
+          if (send2gtw == 0) {
+            send2gtw = gtwSendMessage(&satellites[found], &planet, ((packet_head.type == PT_ADDRREQ) ? PT_ADDRREQ_OFFER : ((packet_head.type == PT_ADDRREQ_REQ) ? PT_ADDRREQ_ACK : PT_TELEMETRY_ACK)));
+          }
+        }
+      }
+
+      DEBUG_STR("Node ");
       DEBUG_UIN(found, HEX);
       if (found < 0 || found >= PLANET_MAX_SATELLITES) {
         DEBUG_STR(" not added ");
@@ -214,13 +261,6 @@ esp_err_t planetLoop() {
       DEBUG_STR(", pres ");
       DEBUG_DBL(packet_data.pres);
       DEBUG_STR(" ");
-
-      if (!(found < 0 || found >= PLANET_MAX_SATELLITES)) {
-        if (packet_head.type == PT_ADDRREQ || packet_head.type == PT_ADDRREQ_REQ || packet_head.type == PT_TELEMETRY) {
-          sendMessage(&satellites[found], &planet, ((packet_head.type == PT_ADDRREQ) ? PT_ADDRREQ_OFFER : ((packet_head.type == PT_ADDRREQ_REQ) ? PT_ADDRREQ_ACK : PT_TELEMETRY_ACK)));
-        }
-      }
-
       DEBUG_STRLN("");
     }
     planet.receive = 0;

@@ -149,6 +149,60 @@ typedef struct {
     float pres;
 } satellite_packet_payload_data_t;
 
+/* packet header
+ * type      packet type see enum PacketTypes_e
+ * sat_addr  satellite address aka unique identifier
+ * dest_addr planet address or broadcast
+*/
+typedef struct {
+    uint8_t  type;
+    uint8_t  src_addr[MAC_ADDRESS_LEN];
+    uint8_t  dest_addr[MAC_ADDRESS_LEN];
+} gtw_packet_head_t;
+
+/* gtw packet control data
+ * state            0 = free/unassigned
+ *                  1 = assigned to this planet
+ * command          if we need to send a command to the satellite (TBI)
+ * uptime           satellite uptime
+ * pktnum           number of packets sent by satellite
+ * rssi             radio signal strenght
+ * receive_timeouts number of timouts when trying to receive data
+ * receive_errors   number of receive errors
+ * send_timeouts    number of timouts when trying to send data
+ * err_code         satellite last error
+ * err_text         satellite last error description
+*/
+typedef struct {
+    uint8_t state;
+    uint8_t command;
+    uint16_t uptime;
+    uint16_t pktnum;
+    int16_t  rssi;
+    uint16_t receive_errors;
+    uint16_t send_errors;
+    uint16_t err_code;
+    uint8_t  err_text[40];
+} gtw_packet_payload_t;
+
+/* gtw satellites data
+*/
+typedef struct {
+    uint8_t id;
+    float temp;
+    float humi;
+    float pres;
+    uint8_t state;
+    uint8_t command;
+    uint16_t uptime;
+    uint16_t pktnum;
+    int16_t  rssi;
+    uint16_t receive_errors;
+    uint16_t send_errors;
+    uint16_t err_code;
+    uint8_t  err_text[40];
+} gtw_packet_payload_data_t;
+
 /* planet data
  * mac_addr         planet mac address
  * uptime           satellite uptime
