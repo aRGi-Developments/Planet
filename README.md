@@ -43,4 +43,4 @@ build_flags = -D ESP8266\
 
 compile and upload\
 
-Created by aRGi (info@argi.mooo.com).
+Created by aRGi (info@argi.mooo.com)(dario.lampa@argi.mooo.com).
